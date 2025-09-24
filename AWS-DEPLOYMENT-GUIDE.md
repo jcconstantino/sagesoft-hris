@@ -1,331 +1,291 @@
-# Sagesoft HRIS - AWS Deployment Guide
+# AWS Deployment Guide - Sagesoft HRIS
+
+This guide provides step-by-step instructions for deploying the Sagesoft HRIS system on AWS with high availability, load balancing, and shared session storage.
+
+## Architecture Overview
+
+- **EC2 Instances**: Amazon Linux 2023 with Auto Scaling
+- **Load Balancer**: Application Load Balancer with SSL termination
+- **Database**: RDS MySQL 8.0
+- **Session Storage**: Amazon EFS for shared sessions
+- **SSL**: AWS Certificate Manager (ACM)
 
 ## Prerequisites
+
 - AWS Account with appropriate permissions
-- AWS CLI installed and configured
-- SSH key pair for EC2 access
+- Domain name for SSL certificate
+- Basic knowledge of AWS services
 
 ## Step 1: Create RDS Database
 
-### 1.1 Create RDS MySQL Instance
+1. **Navigate to RDS Console**
+2. **Create Database**
+   - Engine: MySQL 8.0
+   - Template: Production
+   - DB Instance Identifier: `sagesoft-hris-production-rds`
+   - Master Username: `admin`
+   - Master Password: (secure password)
+   - DB Instance Class: `db.t3.micro` (or larger for production)
+   - Storage: 20 GB (or as needed)
+   - VPC: Default or custom VPC
+   - Subnet Group: Default
+   - Security Group: Create new (allow port 3306 from EC2 security group)
+
+3. **Note the RDS Endpoint** for later configuration
+
+## Step 2: Create EFS File System
+
+1. **Navigate to EFS Console**
+2. **Create File System**
+   - Name: `sagesoft-hris-sessions`
+   - VPC: Same as RDS
+   - Performance Mode: General Purpose
+   - Throughput Mode: Provisioned (or Bursting)
+
+3. **Configure Security Groups**
+   - Allow NFS (port 2049) from EC2 security group
+
+4. **Note the EFS ID** (e.g., `fs-0a91d618573c05bbd`)
+
+## Step 3: Create Launch Template
+
+1. **Navigate to EC2 Console > Launch Templates**
+2. **Create Launch Template**
+   - Name: `sagesoft-hris-launch-template`
+   - AMI: Amazon Linux 2023
+   - Instance Type: `t3.micro` (or larger)
+   - Key Pair: Your existing key pair
+   - Security Groups: Create new with HTTP/HTTPS access
+
+3. **Add User Data Script:**
+   ```bash
+   #!/bin/bash
+   yum update -y
+   yum install -y amazon-efs-utils git httpd php php-mysqlnd composer
+
+   # Mount EFS
+   mkdir -p /mnt/efs-sessions
+   mount -t efs fs-0a91d618573c05bbd.efs.us-east-1.amazonaws.com:/ /mnt/efs-sessions
+
+   # Add to fstab for persistence
+   echo "fs-0a91d618573c05bbd.efs.us-east-1.amazonaws.com:/ /mnt/efs-sessions efs defaults,_netdev 0 0" >> /etc/fstab
+
+   # Create Laravel session directory
+   mkdir -p /mnt/efs-sessions/laravel-sessions
+   chown -R apache:apache /mnt/efs-sessions/laravel-sessions
+   chmod -R 775 /mnt/efs-sessions/laravel-sessions
+
+   # Clone and setup application
+   cd /var/www
+   git clone https://github.com/jcconstantino/sagesoft-hris.git
+   cd sagesoft-hris
+   chmod +x deploy.sh
+   ./deploy.sh
+
+   # Configure environment
+   cp .env.example .env
+   sed -i 's/DB_HOST=.*/DB_HOST=your-rds-endpoint.region.rds.amazonaws.com/' .env
+   sed -i 's/DB_DATABASE=.*/DB_DATABASE=sagesoft_hris/' .env
+   sed -i 's/DB_USERNAME=.*/DB_USERNAME=admin/' .env
+   sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=your-rds-password/' .env
+   sed -i 's/SESSION_DRIVER=.*/SESSION_DRIVER=file/' .env
+
+   # Generate app key and setup database
+   sudo -u apache php artisan key:generate
+   sudo -u apache php artisan migrate --force
+   sudo -u apache php artisan db:seed --force
+
+   # Start services
+   systemctl enable httpd
+   systemctl start httpd
+   ```
+
+   **Replace:**
+   - `fs-0a91d618573c05bbd` with your EFS ID
+   - `your-rds-endpoint.region.rds.amazonaws.com` with your RDS endpoint
+   - `your-rds-password` with your RDS password
+
+## Step 4: Create Application Load Balancer
+
+1. **Navigate to EC2 Console > Load Balancers**
+2. **Create Application Load Balancer**
+   - Name: `sagesoft-hris-alb`
+   - Scheme: Internet-facing
+   - IP Address Type: IPv4
+   - VPC: Same as RDS and EFS
+   - Subnets: Select at least 2 availability zones
+
+3. **Configure Security Groups**
+   - Allow HTTP (80) and HTTPS (443) from anywhere
+
+4. **Configure Listeners**
+   - HTTP:80 → Redirect to HTTPS
+   - HTTPS:443 → Forward to target group
+
+5. **Create Target Group**
+   - Name: `sagesoft-hris-targets`
+   - Protocol: HTTP
+   - Port: 80
+   - Health Check Path: `/login`
+
+## Step 5: Request SSL Certificate
+
+1. **Navigate to Certificate Manager**
+2. **Request Certificate**
+   - Domain: `your-domain.com`
+   - Validation: DNS validation
+   - Follow DNS validation steps
+
+3. **Attach Certificate to Load Balancer**
+   - Edit HTTPS listener
+   - Select your certificate
+
+## Step 6: Create Auto Scaling Group
+
+1. **Navigate to EC2 Console > Auto Scaling Groups**
+2. **Create Auto Scaling Group**
+   - Name: `sagesoft-hris-asg`
+   - Launch Template: Select your template
+   - VPC: Same as other resources
+   - Subnets: Select multiple AZs
+   - Load Balancer: Attach to your ALB target group
+   - Health Checks: ELB + EC2
+   - Desired Capacity: 2
+   - Min: 1, Max: 4
+
+## Step 7: Configure DNS
+
+1. **Update your domain's DNS**
+2. **Create CNAME or A record**
+   - Point your domain to the ALB DNS name
+
+## Step 8: Final Configuration
+
+### Update Environment Variables
+
+SSH into one of your instances and update the `.env` file:
+
 ```bash
-aws rds create-db-instance \
-    --db-instance-identifier sagesoft-hris-db \
-    --db-instance-class db.t3.micro \
-    --engine mysql \
-    --engine-version 8.0.35 \
-    --master-username admin \
-    --master-user-password "SagesoftHRIS2024!" \
-    --allocated-storage 20 \
-    --db-name sagesoft_hris \
-    --vpc-security-group-ids sg-your-security-group \
-    --backup-retention-period 7 \
-    --storage-encrypted \
-    --tags Key=Name,Value=Sagesoft-HRIS-Database
-```
+# SSH to instance
+ssh -i your-key.pem ec2-user@instance-ip
 
-### 1.2 Get RDS Endpoint
-```bash
-aws rds describe-db-instances \
-    --db-instance-identifier sagesoft-hris-db \
-    --query 'DBInstances[0].Endpoint.Address' \
-    --output text
-```
-
-## Step 2: Create Security Groups
-
-### 2.1 Create Web Server Security Group
-```bash
-aws ec2 create-security-group \
-    --group-name sagesoft-hris-web \
-    --description "Security group for Sagesoft HRIS web server"
-
-# Allow HTTP traffic
-aws ec2 authorize-security-group-ingress \
-    --group-name sagesoft-hris-web \
-    --protocol tcp \
-    --port 80 \
-    --cidr 0.0.0.0/0
-
-# Allow HTTPS traffic
-aws ec2 authorize-security-group-ingress \
-    --group-name sagesoft-hris-web \
-    --protocol tcp \
-    --port 443 \
-    --cidr 0.0.0.0/0
-
-# Allow SSH access
-aws ec2 authorize-security-group-ingress \
-    --group-name sagesoft-hris-web \
-    --protocol tcp \
-    --port 22 \
-    --cidr 0.0.0.0/0
-```
-
-### 2.2 Create Database Security Group
-```bash
-aws ec2 create-security-group \
-    --group-name sagesoft-hris-db \
-    --description "Security group for Sagesoft HRIS database"
-
-# Allow MySQL access from web servers
-aws ec2 authorize-security-group-ingress \
-    --group-name sagesoft-hris-db \
-    --protocol tcp \
-    --port 3306 \
-    --source-group sagesoft-hris-web
-```
-
-## Step 3: Launch EC2 Instance
-
-### 3.1 Create User Data Script
-Create a file named `user-data.sh`:
-```bash
-#!/bin/bash
-yum update -y
-yum install -y httpd php php-mysqlnd php-cli php-json php-opcache php-xml php-gd php-devel php-intl php-mbstring php-bcmath php-zip git
-
-# Install Composer
-curl -sS https://getcomposer.org/installer | php
-mv composer.phar /usr/local/bin/composer
-chmod +x /usr/local/bin/composer
-
-# Start and enable Apache
-systemctl start httpd
-systemctl enable httpd
-
-# Create web directory
-mkdir -p /var/www/sagesoft-hris
-chown apache:apache /var/www/sagesoft-hris
-```
-
-### 3.2 Launch EC2 Instance
-```bash
-aws ec2 run-instances \
-    --image-id ami-0abcdef1234567890 \
-    --count 1 \
-    --instance-type t3.micro \
-    --key-name your-key-pair \
-    --security-groups sagesoft-hris-web \
-    --user-data file://user-data.sh \
-    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Sagesoft-HRIS-Web}]'
-```
-
-## Step 4: Deploy Application
-
-### 4.1 Connect to EC2 Instance
-```bash
-ssh -i your-key.pem ec2-user@your-ec2-public-ip
-```
-
-### 4.2 Upload Application Files
-```bash
-# From your local machine
-scp -i your-key.pem -r sagesoft-hris/ ec2-user@your-ec2-public-ip:~/
-```
-
-### 4.3 Set Up Application on Server
-```bash
-# On EC2 instance
-sudo cp -r ~/sagesoft-hris/* /var/www/sagesoft-hris/
-cd /var/www/sagesoft-hris
-
-# Install dependencies
-sudo -u apache composer install --no-dev --optimize-autoloader
-
-# Set up environment
-sudo cp .env.example .env
-sudo chown apache:apache .env
-
-# Generate application key
-sudo -u apache php artisan key:generate
-```
-
-### 4.4 Configure Environment File
-```bash
+# Edit environment
 sudo nano /var/www/sagesoft-hris/.env
 ```
 
-Update the following values:
+Update these values:
 ```env
 APP_NAME="Sagesoft HRIS"
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=http://your-ec2-public-ip
+APP_URL=https://your-domain.com
 
 DB_CONNECTION=mysql
 DB_HOST=your-rds-endpoint.region.rds.amazonaws.com
 DB_PORT=3306
 DB_DATABASE=sagesoft_hris
 DB_USERNAME=admin
-DB_PASSWORD=SagesoftHRIS2024!
+DB_PASSWORD=your-rds-password
+
+SESSION_DRIVER=file
+SESSION_SECURE_COOKIE=true
+SESSION_DOMAIN=.your-domain.com
+
+FORCE_HTTPS=true
 ```
 
-### 4.5 Set Permissions
+### Clear Caches
 ```bash
-sudo chown -R apache:apache /var/www/sagesoft-hris
-sudo chmod -R 755 /var/www/sagesoft-hris
-sudo chmod -R 775 /var/www/sagesoft-hris/storage
-sudo chmod -R 775 /var/www/sagesoft-hris/bootstrap/cache
-```
-
-## Step 5: Configure Apache
-
-### 5.1 Create Virtual Host
-```bash
-sudo tee /etc/httpd/conf.d/sagesoft-hris.conf > /dev/null <<EOF
-<VirtualHost *:80>
-    DocumentRoot /var/www/sagesoft-hris/public
-    ServerName your-domain.com
-    
-    <Directory /var/www/sagesoft-hris/public>
-        AllowOverride All
-        Require all granted
-        DirectoryIndex index.php
-    </Directory>
-    
-    ErrorLog /var/log/httpd/sagesoft_hris_error.log
-    CustomLog /var/log/httpd/sagesoft_hris_access.log combined
-</VirtualHost>
-EOF
-```
-
-### 5.2 Restart Apache
-```bash
-sudo systemctl restart httpd
-```
-
-## Step 6: Initialize Database
-
-### 6.1 Run Migrations and Seeders
-```bash
-cd /var/www/sagesoft-hris
-sudo -u apache php artisan migrate --force
-sudo -u apache php artisan db:seed --force
-```
-
-### 6.2 Optimize Application
-```bash
-sudo -u apache php artisan config:cache
-sudo -u apache php artisan route:cache
-sudo -u apache php artisan view:cache
-```
-
-## Step 7: Test Application
-
-### 7.1 Access Application
-Open your browser and navigate to: `http://your-ec2-public-ip`
-
-### 7.2 Login Credentials
-- **Admin**: admin@sagesoft.com / password123
-- **HR Manager**: hr@sagesoft.com / password123
-
-## Step 8: Optional - Set Up Load Balancer
-
-### 8.1 Create Application Load Balancer
-```bash
-aws elbv2 create-load-balancer \
-    --name sagesoft-hris-alb \
-    --subnets subnet-12345678 subnet-87654321 \
-    --security-groups sg-your-alb-security-group
-```
-
-### 8.2 Create Target Group
-```bash
-aws elbv2 create-target-group \
-    --name sagesoft-hris-targets \
-    --protocol HTTP \
-    --port 80 \
-    --vpc-id vpc-12345678 \
-    --health-check-path /login
-```
-
-### 8.3 Register Targets
-```bash
-aws elbv2 register-targets \
-    --target-group-arn arn:aws:elasticloadbalancing:region:account:targetgroup/sagesoft-hris-targets \
-    --targets Id=i-1234567890abcdef0
-```
-
-## Step 9: Set Up Auto Scaling (Optional)
-
-### 9.1 Create Launch Template
-```bash
-aws ec2 create-launch-template \
-    --launch-template-name sagesoft-hris-template \
-    --launch-template-data '{
-        "ImageId":"ami-0abcdef1234567890",
-        "InstanceType":"t3.micro",
-        "KeyName":"your-key-pair",
-        "SecurityGroupIds":["sg-your-security-group"],
-        "UserData":"base64-encoded-user-data"
-    }'
-```
-
-### 9.2 Create Auto Scaling Group
-```bash
-aws autoscaling create-auto-scaling-group \
-    --auto-scaling-group-name sagesoft-hris-asg \
-    --launch-template LaunchTemplateName=sagesoft-hris-template,Version=1 \
-    --min-size 1 \
-    --max-size 3 \
-    --desired-capacity 2 \
-    --target-group-arns arn:aws:elasticloadbalancing:region:account:targetgroup/sagesoft-hris-targets \
-    --availability-zones us-east-1a us-east-1b
+sudo -u apache php artisan config:clear
+sudo -u apache php artisan cache:clear
+sudo -u apache php artisan route:clear
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Database Connection Error**
-   - Check RDS endpoint in .env file
-   - Verify security group allows MySQL traffic
-   - Ensure RDS instance is running
-
-2. **Permission Errors**
-   - Run: `sudo chown -R apache:apache /var/www/sagesoft-hris`
-   - Run: `sudo chmod -R 775 /var/www/sagesoft-hris/storage`
-
-3. **Apache Not Starting**
-   - Check logs: `sudo tail -f /var/log/httpd/error_log`
-   - Verify PHP modules: `php -m`
-
-4. **Application Key Error**
-   - Run: `sudo -u apache php artisan key:generate`
-
-### Monitoring Commands
-```bash
-# Check Apache status
-sudo systemctl status httpd
-
-# Check PHP-FPM status
-sudo systemctl status php-fpm
-
-# View application logs
-sudo tail -f /var/www/sagesoft-hris/storage/logs/laravel.log
-
-# Check database connectivity
-mysql -h your-rds-endpoint -u admin -p sagesoft_hris
-```
-
-## Security Best Practices
-
-1. **Update .env file permissions**
+1. **500 Internal Server Error**
    ```bash
-   sudo chmod 600 /var/www/sagesoft-hris/.env
+   # Check Apache logs
+   sudo tail -f /var/log/httpd/error_log
+   
+   # Check Laravel logs
+   sudo tail -f /var/www/sagesoft-hris/storage/logs/laravel.log
+   
+   # Fix permissions
+   sudo chown -R apache:apache /var/www/sagesoft-hris/storage
+   sudo chmod -R 775 /var/www/sagesoft-hris/storage
    ```
 
-2. **Enable HTTPS with SSL certificate**
-3. **Regularly update system packages**
-4. **Use IAM roles instead of access keys**
-5. **Enable CloudTrail for audit logging**
-6. **Set up CloudWatch monitoring**
+2. **Database Connection Issues**
+   ```bash
+   # Test database connection
+   mysql -h your-rds-endpoint -u admin -p
+   
+   # Check security groups allow port 3306
+   ```
 
-## Backup Strategy
+3. **EFS Mount Issues**
+   ```bash
+   # Check EFS mount
+   df -h | grep efs
+   
+   # Remount if needed
+   sudo mount -a
+   
+   # Check security groups allow port 2049
+   ```
 
-1. **RDS Automated Backups**: Already enabled with 7-day retention
-2. **Application Files**: Use S3 for regular backups
-3. **Database Snapshots**: Create manual snapshots before major updates
+4. **SSL/HTTPS Issues**
+   ```bash
+   # Check certificate status in ACM
+   # Verify DNS validation
+   # Check load balancer listener configuration
+   ```
 
-Your Sagesoft HRIS system is now deployed and ready for use!
+### Health Checks
+
+```bash
+# Check application status
+curl -I http://localhost/login
+
+# Check EFS mount
+ls -la /mnt/efs-sessions/laravel-sessions/
+
+# Check database connectivity
+sudo -u apache php artisan tinker --execute="DB::connection()->getPdo();"
+```
+
+## Security Considerations
+
+1. **Security Groups**: Restrict access to necessary ports only
+2. **RDS**: Enable encryption at rest and in transit
+3. **EFS**: Enable encryption
+4. **SSL**: Use strong cipher suites
+5. **Application**: Keep Laravel and dependencies updated
+
+## Monitoring and Maintenance
+
+1. **CloudWatch**: Set up monitoring for EC2, RDS, and ALB
+2. **Backups**: Configure automated RDS backups
+3. **Updates**: Regular security updates via Systems Manager
+4. **Logs**: Centralize logs using CloudWatch Logs
+
+## Cost Optimization
+
+1. **Instance Types**: Use appropriate instance sizes
+2. **Reserved Instances**: For predictable workloads
+3. **Auto Scaling**: Scale based on demand
+4. **RDS**: Use appropriate instance class and storage type
+
+## Default Login Credentials
+
+- **Administrator**: admin@sagesoft.com / password123
+- **HR Manager**: hr@sagesoft.com / password123
+
+**Important**: Change these credentials immediately after deployment!
+
+---
+
+This deployment provides a production-ready, highly available Sagesoft HRIS system on AWS with proper security, scalability, and monitoring capabilities.

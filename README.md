@@ -9,15 +9,19 @@ A comprehensive Human Resource Information System built with Laravel, featuring 
 - **Dashboard**: Overview of employee statistics and recent activities
 - **Responsive Design**: Mobile-friendly interface with Bootstrap
 - **Sagesoft Branding**: Professional corporate design
-- **AWS Ready**: Optimized for deployment on Amazon Linux 2
+- **AWS Ready**: Optimized for deployment on Amazon Linux 2/2023
+- **Load Balancer Support**: SSL termination with AWS ACM
+- **Shared Sessions**: EFS-based session storage for multi-server deployments
 
 ## Technology Stack
 
-- **Backend**: PHP 8.1, Laravel 10
-- **Database**: MySQL 8.0
+- **Backend**: PHP 8.1+, Laravel 10
+- **Database**: MySQL 8.0 / Amazon RDS
 - **Frontend**: Bootstrap 5, Font Awesome
 - **Server**: Apache HTTP Server
-- **Platform**: Amazon Linux 2
+- **Platform**: Amazon Linux 2/2023
+- **Storage**: Amazon EFS for shared sessions
+- **SSL**: AWS Certificate Manager (ACM)
 
 ## Quick Start
 
@@ -25,7 +29,7 @@ A comprehensive Human Resource Information System built with Laravel, featuring 
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/jcconstantino/sagesoft-hris.git
    cd sagesoft-hris
    ```
 
@@ -61,32 +65,37 @@ A comprehensive Human Resource Information System built with Laravel, featuring 
    php artisan serve
    ```
 
-### AWS Deployment
+### AWS Production Deployment
 
 For detailed AWS deployment instructions, see [AWS-DEPLOYMENT-GUIDE.md](AWS-DEPLOYMENT-GUIDE.md)
 
 #### Quick AWS Deployment
 
-1. **Upload files to EC2 instance**
-   ```bash
-   scp -i your-key.pem -r sagesoft-hris/ ec2-user@your-ec2-ip:~/
-   ```
+1. **Launch EC2 instance with Amazon Linux 2023**
 
-2. **Run automated deployment**
+2. **Clone and deploy**
    ```bash
-   ssh -i your-key.pem ec2-user@your-ec2-ip
+   git clone https://github.com/jcconstantino/sagesoft-hris.git
    cd sagesoft-hris
    chmod +x deploy.sh
    ./deploy.sh
    ```
 
-3. **Configure database and initialize**
+3. **Configure environment**
    ```bash
-   # Edit database credentials
-   sudo nano /var/www/sagesoft-hris/.env
-   
-   # Initialize database
+   sudo cp .env.example .env
+   sudo nano .env
+   # Update database credentials and other settings
+   ```
+
+4. **Initialize database**
+   ```bash
    ./setup-database.sh
+   ```
+
+5. **Configure SSL (optional)**
+   ```bash
+   ./setup-ssl.sh
    ```
 
 ## Default Login Credentials
@@ -98,40 +107,85 @@ For detailed AWS deployment instructions, see [AWS-DEPLOYMENT-GUIDE.md](AWS-DEPL
 
 ### Minimum Requirements
 - PHP 8.1 or higher
-- MySQL 5.7 or higher
+- MySQL 5.7 or higher / MariaDB 10.3+
 - Apache 2.4 or higher
 - 1GB RAM
 - 1GB disk space
 
 ### Recommended for Production
 - PHP 8.1+
-- MySQL 8.0+
+- MySQL 8.0+ / MariaDB 10.6+
 - Apache 2.4+
 - 2GB RAM
 - 10GB disk space
 - SSL certificate
+- Amazon EFS for shared sessions (load balancer setup)
+
+### AWS Production Requirements
+- Amazon Linux 2023
+- RDS MySQL 8.0
+- Application Load Balancer with SSL termination
+- Amazon EFS for session storage
+- Auto Scaling Group for high availability
 
 ## Application Structure
 
 ```
 sagesoft-hris/
 ├── app/
-│   ├── Http/Controllers/
-│   │   ├── AuthController.php
-│   │   ├── DashboardController.php
-│   │   └── EmployeeController.php
-│   └── Models/
-│       ├── User.php
-│       └── Employee.php
+│   ├── Console/
+│   │   └── Kernel.php
+│   ├── Exceptions/
+│   │   └── Handler.php
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── Controller.php
+│   │   │   ├── AuthController.php
+│   │   │   ├── DashboardController.php
+│   │   │   └── EmployeeController.php
+│   │   ├── Kernel.php
+│   │   └── Middleware/
+│   │       └── TrustProxies.php
+│   ├── Models/
+│   │   ├── User.php
+│   │   └── Employee.php
+│   └── Providers/
+│       ├── AppServiceProvider.php
+│       ├── AuthServiceProvider.php
+│       ├── EventServiceProvider.php
+│       └── RouteServiceProvider.php
+├── bootstrap/
+│   ├── app.php
+│   └── cache/
+├── config/
+│   ├── app.php
+│   ├── auth.php
+│   ├── cache.php
+│   ├── database.php
+│   ├── session.php
+│   └── view.php
 ├── database/
 │   ├── migrations/
 │   └── seeders/
+├── public/
+│   ├── .htaccess
+│   └── index.php
 ├── resources/views/
 │   ├── auth/
 │   ├── employees/
 │   └── layouts/
-├── routes/web.php
+├── routes/
+│   ├── console.php
+│   └── web.php
+├── storage/
+│   ├── framework/
+│   │   ├── cache/
+│   │   ├── sessions/
+│   │   └── views/
+│   └── logs/
+├── artisan
 ├── deploy.sh
+├── .env.example
 └── AWS-DEPLOYMENT-GUIDE.md
 ```
 
@@ -190,17 +244,47 @@ The system uses web routes for all functionality:
 ## Deployment Scripts
 
 ### deploy.sh
-Automated deployment script for Amazon Linux 2 that:
-- Installs all required packages
-- Configures Apache and PHP
-- Sets up the application
-- Creates helper scripts
+Automated deployment script for Amazon Linux 2023 that:
+- Detects package manager (dnf vs yum)
+- Installs all required packages (PHP, Apache, MySQL client)
+- Configures Apache and PHP-FPM
+- Sets up the application with proper permissions
+- Creates helper scripts for database and SSL setup
 
 ### Helper Scripts
-- `setup-database.sh` - Initialize database
-- `setup-ssl.sh` - Configure SSL certificate
-- `monitor.sh` - System health check
-- `backup.sh` - Create system backups
+- `setup-database.sh` - Initialize database with migrations and seeders
+- `setup-ssl.sh` - Configure SSL certificate with Let's Encrypt
+- `monitor.sh` - System health check and monitoring
+- `backup.sh` - Create system and database backups
+
+## Load Balancer Configuration
+
+### EFS Session Storage
+For load-balanced deployments, sessions are stored on Amazon EFS:
+
+1. **Mount EFS on all instances:**
+   ```bash
+   sudo mkdir -p /mnt/efs-sessions
+   sudo mount -t efs fs-your-efs-id.efs.region.amazonaws.com:/ /mnt/efs-sessions
+   ```
+
+2. **Add to /etc/fstab:**
+   ```
+   fs-your-efs-id.efs.region.amazonaws.com:/ /mnt/efs-sessions efs defaults,_netdev 0 0
+   ```
+
+3. **Configure Laravel session path:**
+   ```php
+   // config/session.php
+   'files' => '/mnt/efs-sessions/laravel-sessions',
+   ```
+
+### SSL Termination
+When using AWS Application Load Balancer with ACM certificates:
+
+1. **TrustProxies middleware** handles forwarded headers
+2. **HTTPS detection** from X-Forwarded-Proto header
+3. **Secure cookie settings** for HTTPS-only sessions
 
 ## Troubleshooting
 
