@@ -82,9 +82,9 @@ fi
 # Install MySQL client
 print_status "Installing MySQL client..."
 if command -v dnf &> /dev/null; then
-    sudo dnf install -y mysql
+    sudo dnf install -y mysql-community-client || sudo dnf install -y mariadb
 else
-    sudo yum install -y mysql
+    sudo yum install -y mysql || sudo yum install -y mariadb
 fi
 
 # Create application directory
