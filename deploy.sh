@@ -87,14 +87,19 @@ else
     sudo yum install -y mysql 2>/dev/null || sudo yum install -y mariadb 2>/dev/null || print_warning "MySQL client not available, you can install it later if needed"
 fi
 
-# Create application directory
+# Create application directory and copy files
 print_status "Setting up application directory..."
 sudo mkdir -p /var/www/sagesoft-hris
 sudo chown -R apache:apache /var/www/sagesoft-hris
 
-# Copy application files
-print_status "Copying application files..."
-sudo cp -r . /var/www/sagesoft-hris/
+# Copy application files only if not already in target directory
+if [ "$(pwd)" != "/var/www/sagesoft-hris" ]; then
+    print_status "Copying application files..."
+    sudo cp -r . /var/www/sagesoft-hris/
+else
+    print_status "Already in application directory, skipping file copy..."
+fi
+
 cd /var/www/sagesoft-hris
 
 # Install PHP dependencies
