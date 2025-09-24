@@ -5,7 +5,7 @@ return [
     'lifetime' => env('SESSION_LIFETIME', 120),
     'expire_on_close' => false,
     'encrypt' => false,
-    'files' => storage_path('framework/sessions'),
+    'files' => '/mnt/efs-sessions/laravel-sessions',
     'connection' => env('SESSION_CONNECTION'),
     'table' => 'sessions',
     'store' => env('SESSION_STORE'),
