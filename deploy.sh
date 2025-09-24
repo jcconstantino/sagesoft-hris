@@ -48,14 +48,24 @@ sudo systemctl enable httpd
 
 # Install PHP 8.1 and extensions
 print_status "Installing PHP and required extensions..."
-sudo amazon-linux-extras install -y php8.1
+# Try amazon-linux-extras first, fallback to EPEL if not available
+if sudo amazon-linux-extras list | grep -q php8.1; then
+    sudo amazon-linux-extras install -y php8.1
+else
+    sudo yum install -y epel-release
+    sudo yum install -y php81 php81-php-cli php81-php-fpm
+fi
 sudo yum install -y php-cli php-fpm php-mysqlnd php-json php-opcache php-xml php-gd php-devel php-intl php-mbstring php-bcmath php-zip
 
 # Install Composer
 print_status "Installing Composer..."
-curl -sS https://getcomposer.org/installer | php
-sudo mv composer.phar /usr/local/bin/composer
-sudo chmod +x /usr/local/bin/composer
+if ! command -v composer &> /dev/null; then
+    curl -sS https://getcomposer.org/installer | php
+    sudo mv composer.phar /usr/local/bin/composer
+    sudo chmod +x /usr/local/bin/composer
+else
+    print_status "Composer already installed"
+fi
 
 # Install MySQL client
 print_status "Installing MySQL client..."
@@ -126,9 +136,10 @@ print_status "Configuring PHP-FPM..."
 sudo systemctl start php-fpm
 sudo systemctl enable php-fpm
 
-# Enable mod_rewrite
+# Enable mod_rewrite and mod_headers
 print_status "Enabling Apache modules..."
 sudo sed -i 's/#LoadModule rewrite_module/LoadModule rewrite_module/' /etc/httpd/conf/httpd.conf
+sudo sed -i 's/#LoadModule headers_module/LoadModule headers_module/' /etc/httpd/conf/httpd.conf
 
 # Restart Apache
 print_status "Restarting Apache..."
@@ -249,7 +260,7 @@ print_status "Deployment completed successfully!"
 print_warning "Next steps:"
 echo "1. Update database credentials in /var/www/sagesoft-hris/.env"
 echo "2. Run ./setup-database.sh to initialize the database"
-echo "3. Access your application at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo 'your-server-ip')"
+echo "3. Access your application at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 --max-time 5 2>/dev/null || curl -s http://checkip.amazonaws.com 2>/dev/null || echo 'your-server-ip')"
 echo ""
 echo "Available scripts:"
 echo "  ./setup-database.sh  - Initialize database"
