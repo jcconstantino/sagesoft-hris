@@ -169,7 +169,7 @@ sudo systemctl restart httpd
 
 # Create database setup script
 print_status "Creating database setup script..."
-cat > setup-database.sh << 'EOF'
+sudo tee setup-database.sh > /dev/null << 'EOF'
 #!/bin/bash
 echo "Setting up database..."
 
@@ -203,11 +203,11 @@ echo "  Admin: admin@sagesoft.com / password123"
 echo "  HR Manager: hr@sagesoft.com / password123"
 EOF
 
-chmod +x setup-database.sh
+sudo chmod +x setup-database.sh
 
 # Create SSL setup script
 print_status "Creating SSL setup script..."
-cat > setup-ssl.sh << 'EOF'
+sudo tee setup-ssl.sh > /dev/null << 'EOF'
 #!/bin/bash
 echo "Setting up SSL certificate..."
 
@@ -221,11 +221,11 @@ echo ""
 echo "Make sure your domain points to this server's IP address first!"
 EOF
 
-chmod +x setup-ssl.sh
+sudo chmod +x setup-ssl.sh
 
 # Create monitoring script
 print_status "Creating monitoring script..."
-cat > monitor.sh << 'EOF'
+sudo tee monitor.sh > /dev/null << 'EOF'
 #!/bin/bash
 echo "=== Sagesoft HRIS System Status ==="
 echo ""
@@ -254,11 +254,11 @@ echo "Recent Application Logs:"
 sudo tail -n 10 /var/www/sagesoft-hris/storage/logs/laravel.log 2>/dev/null || echo "No application logs found"
 EOF
 
-chmod +x monitor.sh
+sudo chmod +x monitor.sh
 
 # Create backup script
 print_status "Creating backup script..."
-cat > backup.sh << 'EOF'
+sudo tee backup.sh > /dev/null << 'EOF'
 #!/bin/bash
 BACKUP_DIR="/home/ec2-user/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
@@ -276,7 +276,7 @@ echo "Backup completed: $BACKUP_DIR/"
 ls -la $BACKUP_DIR/
 EOF
 
-chmod +x backup.sh
+sudo chmod +x backup.sh
 
 print_status "Deployment completed successfully!"
 print_warning "Next steps:"
