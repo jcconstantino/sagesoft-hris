@@ -14,6 +14,11 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
+        // Force HTTPS if behind load balancer
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            URL::forceScheme('https');
+        }
+        
         if (env('FORCE_HTTPS', false)) {
             URL::forceScheme('https');
         }
