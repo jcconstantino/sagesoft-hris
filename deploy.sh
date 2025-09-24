@@ -38,24 +38,36 @@ print_status "Starting Sagesoft HRIS deployment..."
 
 # Update system
 print_status "Updating system packages..."
-sudo yum update -y
+if command -v dnf &> /dev/null; then
+    sudo dnf update -y
+else
+    sudo yum update -y
+fi
 
 # Install Apache
 print_status "Installing Apache web server..."
-sudo yum install -y httpd
+if command -v dnf &> /dev/null; then
+    sudo dnf install -y httpd
+else
+    sudo yum install -y httpd
+fi
 sudo systemctl start httpd
 sudo systemctl enable httpd
 
 # Install PHP 8.1 and extensions
 print_status "Installing PHP and required extensions..."
-# Try amazon-linux-extras first, fallback to EPEL if not available
-if sudo amazon-linux-extras list | grep -q php8.1; then
+# Detect the system and install PHP accordingly
+if command -v dnf &> /dev/null; then
+    # Amazon Linux 2023 or newer
+    sudo dnf install -y php php-cli php-fpm php-mysqlnd php-json php-opcache php-xml php-gd php-devel php-intl php-mbstring php-bcmath php-zip
+elif command -v amazon-linux-extras &> /dev/null; then
+    # Amazon Linux 2 with extras
     sudo amazon-linux-extras install -y php8.1
+    sudo yum install -y php-cli php-fpm php-mysqlnd php-json php-opcache php-xml php-gd php-devel php-intl php-mbstring php-bcmath php-zip
 else
-    sudo yum install -y epel-release
-    sudo yum install -y php81 php81-php-cli php81-php-fpm
+    # Fallback for other systems
+    sudo yum install -y php php-cli php-fpm php-mysqlnd php-json php-opcache php-xml php-gd php-devel php-intl php-mbstring php-bcmath php-zip
 fi
-sudo yum install -y php-cli php-fpm php-mysqlnd php-json php-opcache php-xml php-gd php-devel php-intl php-mbstring php-bcmath php-zip
 
 # Install Composer
 print_status "Installing Composer..."
@@ -69,7 +81,11 @@ fi
 
 # Install MySQL client
 print_status "Installing MySQL client..."
-sudo yum install -y mysql
+if command -v dnf &> /dev/null; then
+    sudo dnf install -y mysql
+else
+    sudo yum install -y mysql
+fi
 
 # Create application directory
 print_status "Setting up application directory..."
