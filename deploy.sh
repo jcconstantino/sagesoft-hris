@@ -104,6 +104,7 @@ cd /var/www/sagesoft-hris
 
 # Install PHP dependencies
 print_status "Installing PHP dependencies..."
+cd /var/www/sagesoft-hris
 sudo -u apache composer install --no-dev --optimize-autoloader
 
 # Set up environment file
