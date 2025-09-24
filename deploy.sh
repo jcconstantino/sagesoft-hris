@@ -79,12 +79,12 @@ else
     print_status "Composer already installed"
 fi
 
-# Install MySQL client
+# Install MySQL client (optional - for database operations)
 print_status "Installing MySQL client..."
 if command -v dnf &> /dev/null; then
-    sudo dnf install -y mysql-community-client || sudo dnf install -y mariadb
+    sudo dnf install -y mariadb105 2>/dev/null || sudo dnf install -y mysql 2>/dev/null || print_warning "MySQL client not available, you can install it later if needed"
 else
-    sudo yum install -y mysql || sudo yum install -y mariadb
+    sudo yum install -y mysql 2>/dev/null || sudo yum install -y mariadb 2>/dev/null || print_warning "MySQL client not available, you can install it later if needed"
 fi
 
 # Create application directory
