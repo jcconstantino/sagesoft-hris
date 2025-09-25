@@ -208,7 +208,7 @@ print_status "Uploading HR documents to S3..."
 aws s3 sync hr-documents/ s3://$BUCKET_NAME/
 
 print_status "Setting up bucket policy for Q Business access..."
-cat > bucket-policy.json << EOF
+sudo tee bucket-policy.json > /dev/null << EOF
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -233,7 +233,7 @@ EOF
 aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy file://bucket-policy.json
 
 print_status "Creating IAM role for Q Business..."
-cat > trust-policy.json << EOF
+sudo tee trust-policy.json > /dev/null << EOF
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -251,7 +251,7 @@ EOF
 ROLE_NAME="QBusinessServiceRole-$(date +%s)"
 aws iam create-role --role-name $ROLE_NAME --assume-role-policy-document file://trust-policy.json
 
-cat > service-policy.json << EOF
+sudo tee service-policy.json > /dev/null << EOF
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -293,7 +293,7 @@ RETRIEVER_RESULT=$(aws qbusiness create-retriever \
 RETRIEVER_ID=$(echo $RETRIEVER_RESULT | jq -r '.retrieverId')
 
 print_status "Creating data source..."
-cat > datasource-config.json << EOF
+sudo tee datasource-config.json > /dev/null << EOF
 {
     "s3Configuration": {
         "bucketName": "$BUCKET_NAME"
@@ -318,8 +318,8 @@ aws qbusiness start-data-source-sync-job \
     --index-id $RETRIEVER_ID
 
 # Cleanup temporary files
-rm -f bucket-policy.json trust-policy.json service-policy.json datasource-config.json
-rm -rf hr-documents/
+sudo rm -f bucket-policy.json trust-policy.json service-policy.json datasource-config.json
+sudo rm -rf hr-documents/
 
 echo ""
 echo "=========================================="
