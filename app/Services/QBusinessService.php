@@ -31,7 +31,8 @@ class QBusinessService
             $params = [
                 'applicationId' => $this->applicationId,
                 'userMessage' => $message,
-                'userId' => $userId ?? 'anonymous-' . uniqid(),
+                // Don't send userId for anonymous applications
+                // 'userId' => $userId ?? 'anonymous-' . uniqid(),
             ];
 
             if ($conversationId) {
@@ -62,10 +63,13 @@ class QBusinessService
     public function getConversations($userId)
     {
         try {
-            $result = $this->client->listConversations([
+            $params = [
                 'applicationId' => $this->applicationId,
-                'userId' => $userId
-            ]);
+                // Don't send userId for anonymous applications
+                // 'userId' => $userId
+            ];
+
+            $result = $this->client->listConversations($params);
 
             return $result['conversations'] ?? [];
         } catch (AwsException $e) {
