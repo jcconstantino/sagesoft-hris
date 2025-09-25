@@ -370,7 +370,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Show typing indicator
         showTyping();
 
-        // Send to backend
+        // Send to backend - don't send conversationId to avoid message ID mismatch
         fetch('/chatbot/message', {
             method: 'POST',
             headers: {
@@ -378,8 +378,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-CSRF-TOKEN': csrfToken.content
             },
             body: JSON.stringify({
-                message: message,
-                conversation_id: conversationId
+                message: message
+                // Remove conversation_id to start fresh conversations
             })
         })
         .then(response => response.json())
