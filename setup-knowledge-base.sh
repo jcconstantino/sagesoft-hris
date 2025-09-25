@@ -48,10 +48,11 @@ print_status "Creating S3 bucket: $BUCKET_NAME"
 aws s3 mb s3://$BUCKET_NAME --region $REGION
 
 print_status "Creating sample HR documents..."
-mkdir -p hr-documents
+sudo mkdir -p hr-documents
+sudo chown ec2-user:ec2-user hr-documents
 
 # Create sample HR documents
-cat > hr-documents/employee-handbook.txt << 'EOF'
+sudo tee hr-documents/employee-handbook.txt > /dev/null << 'EOF'
 SAGESOFT EMPLOYEE HANDBOOK
 
 1. COMPANY OVERVIEW
@@ -89,7 +90,7 @@ Harassment and discrimination are strictly prohibited.
 - No personal software installation without approval
 EOF
 
-cat > hr-documents/leave-policy.txt << 'EOF'
+sudo tee hr-documents/leave-policy.txt > /dev/null << 'EOF'
 LEAVE POLICY
 
 ANNUAL LEAVE
@@ -123,7 +124,7 @@ HOW TO REQUEST LEAVE
 4. Minimum 2 weeks notice for planned leave
 EOF
 
-cat > hr-documents/benefits-guide.txt << 'EOF'
+sudo tee hr-documents/benefits-guide.txt > /dev/null << 'EOF'
 EMPLOYEE BENEFITS GUIDE
 
 HEALTH INSURANCE
@@ -162,7 +163,7 @@ Benefits Questions: benefits@sagesoft.com
 Phone: (555) 123-4567
 EOF
 
-cat > hr-documents/it-support.txt << 'EOF'
+sudo tee hr-documents/it-support.txt > /dev/null << 'EOF'
 IT SUPPORT GUIDE
 
 GETTING HELP
