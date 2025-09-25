@@ -42,7 +42,7 @@ class ChatbotController extends Controller
             ]);
         }
 
-        $userId = Auth::check() ? Auth::user()->email : 'guest-' . $request->ip();
+        $userId = null; // Set to null for anonymous Q Business applications
         
         $response = $this->qBusinessService->sendMessage(
             $request->message,
@@ -59,7 +59,7 @@ class ChatbotController extends Controller
             return response()->json([]);
         }
 
-        $userId = Auth::check() ? Auth::user()->email : 'guest';
+        $userId = null; // Set to null for anonymous Q Business applications
         $conversations = $this->qBusinessService->getConversations($userId);
         
         return response()->json($conversations);
