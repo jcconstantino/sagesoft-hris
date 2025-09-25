@@ -42,6 +42,8 @@ fi
 print_status "Fixing file permissions for composer..."
 sudo chown apache:apache composer.json composer.lock 2>/dev/null || true
 sudo chown -R apache:apache vendor/ 2>/dev/null || true
+sudo mkdir -p /usr/share/httpd/.composer/cache
+sudo chown -R apache:apache /usr/share/httpd/.composer 2>/dev/null || true
 
 print_status "Installing AWS SDK for PHP..."
 sudo -u apache composer require aws/aws-sdk-php
