@@ -46,7 +46,17 @@ sudo mkdir -p /usr/share/httpd/.composer/cache
 sudo chown -R apache:apache /usr/share/httpd/.composer 2>/dev/null || true
 
 print_status "Installing AWS SDK for PHP..."
-sudo -u apache composer require aws/aws-sdk-php
+# Try multiple approaches to install AWS SDK
+if sudo -u apache composer require aws/aws-sdk-php; then
+    print_status "AWS SDK installed successfully"
+elif sudo composer require aws/aws-sdk-php && sudo chown -R apache:apache vendor/; then
+    print_status "AWS SDK installed with sudo"
+else
+    print_error "Failed to install AWS SDK. Please install manually:"
+    echo "sudo composer require aws/aws-sdk-php"
+    echo "sudo chown -R apache:apache vendor/"
+    exit 1
+fi
 
 print_status "Creating service directories..."
 sudo mkdir -p app/Services
