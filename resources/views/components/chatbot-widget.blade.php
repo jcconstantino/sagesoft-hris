@@ -322,10 +322,17 @@ document.addEventListener('DOMContentLoaded', function() {
     send.addEventListener('click', sendMessage);
 
     function checkStatus() {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (!csrfToken) {
+            console.error('CSRF token not found');
+            status.innerHTML = '<small class="text-danger"><i class="fas fa-times-circle me-1"></i>CSRF token missing</small>';
+            return;
+        }
+
         fetch('/chatbot/status', {
             method: 'GET',
             headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                'X-CSRF-TOKEN': csrfToken.content
             }
         })
         .then(response => response.json())
@@ -350,6 +357,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const message = input.value.trim();
         if (!message || !isConfigured) return;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (!csrfToken) {
+            addMessage('CSRF token missing. Please refresh the page.', 'bot', true);
+            return;
+        }
+
         // Add user message to chat
         addMessage(message, 'user');
         input.value = '';
@@ -362,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                'X-CSRF-TOKEN': csrfToken.content
             },
             body: JSON.stringify({
                 message: message,
